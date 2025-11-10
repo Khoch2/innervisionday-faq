@@ -1,0 +1,20 @@
+{
+  "name": "innervisionday-qa",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "server": "nodemon --config nodemon.json server/index.js",
+    "client": "npm --prefix client run dev",
+    "dev": "concurrently -k \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "nanoid": "^5.1.6",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

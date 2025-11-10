@@ -1,0 +1,7 @@
+{
+    "watch": ["server/**/*.js"],
+    "ext": "js,mjs,cjs",
+    "signal": "SIGTERM",
+    "delay": "100"
+  }
+  

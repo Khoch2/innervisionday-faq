@@ -1,0 +1,143 @@
+:root{
+    --bg:#0A0F0E;
+    --panel:#1F2E2D;
+    --mint:#7AD4B0;
+    --olive:#97924B;
+    --text:#E9F0ED;
+    --muted:#A7B2AE;
+    --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  
+  * { box-sizing: border-box; }
+  html, body, #root { height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  .container{ max-width:960px; margin:0 auto; padding:16px; }
+  
+  .topbar{
+    position:sticky; top:0; z-index:40;
+    background:linear-gradient(180deg, rgba(10,15,14,0.95), rgba(10,15,14,0.6) 90%, transparent);
+    backdrop-filter: blur(6px);
+    padding:12px 16px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  
+  h1{ font-size:22px; margin:10px 0 16px; }
+  h2{ font-size:18px; margin:10px 0 12px; }
+  
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(1, 1fr);
+    gap:12px;
+  }
+  @media(min-width:700px){ .grid{ grid-template-columns:repeat(2, 1fr); } }
+  
+  .card{
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:18px;
+    padding:14px;
+    display:flex; align-items:center; gap:12px;
+    text-decoration:none; color:inherit;
+    box-shadow: var(--shadow);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .card:hover{ transform:translateY(-1px); border-color:rgba(122,212,176,.5); }
+  
+  .speaker-img{
+    width:64px; height:64px;
+    border-radius:50%;
+    object-fit:cover; background:#0A0F0E;
+    border:2px solid rgba(122,212,176,.5);
+    box-shadow: 0 4px 12px rgba(122,212,176,.1);
+    flex:0 0 auto;
+  }
+  
+  .speaker-meta .name{ font-weight:700; font-size:16px; }
+  .speaker-meta .slug{ font-size:12px; opacity:.6; }
+  
+  .input-wrap{
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px; padding:12px;
+    box-shadow: var(--shadow);
+  }
+  textarea{
+    width:100%; min-height:160px;
+    background:transparent; border:none; color:var(--text);
+    font-size:16px; line-height:1.5; outline:none; resize:vertical;
+  }
+  
+  /* Button größer und luftiger */
+  .button{
+    width:100%; height:60px;
+    border-radius:16px; border:none;
+    background:var(--mint); color:#0B1412;
+    font-weight:800; font-size:17px; cursor:pointer;
+    letter-spacing:.2px;
+    box-shadow: 0 10px 28px rgba(122,212,176,.30);
+    transition: transform .12s ease, opacity .12s ease;
+  }
+  .button:active{ transform: translateY(1px); }
+  .button[disabled]{ opacity:.5; cursor:not-allowed; }
+  
+  .helper{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:12px; color:var(--muted); margin-top:8px;
+  }
+  
+  .list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+  .scroll{
+    max-height:65vh; overflow:auto; scroll-behavior:smooth;
+    padding-right:4px;
+  }
+  
+  .row{
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:14px; padding:12px;
+  }
+  
+  .row-top{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  
+  .check{
+    min-width:36px; min-height:36px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:2px solid var(--muted); color:var(--muted);
+    background:transparent; cursor:pointer; font-weight:900;
+    transition: all .12s ease;
+  }
+  .check.active{
+    border-color:var(--mint); color:#0B1412; background:var(--mint);
+    box-shadow: 0 0 0 3px rgba(122,212,176,.22);
+  }
+  .check[disabled]{ opacity:.5; cursor:not-allowed; }
+  
+  .tabs{ display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }
+  .tab{
+    padding:8px 12px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.02); cursor:pointer; font-size:14px;
+  }
+  .tab.active{
+    border-color:rgba(122,212,176,.6); color:var(--mint);
+    background:rgba(122,212,176,.12);
+  }
+  
+  .snackbar{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:16px; background:#13322D; color:var(--mint);
+    border:1px solid rgba(122,212,176,.5);
+    padding:10px 14px; border-radius:12px; font-size:14px;
+    box-shadow: var(--shadow);
+  }
+  
