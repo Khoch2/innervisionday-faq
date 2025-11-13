@@ -6,7 +6,7 @@
     "server": "nodemon --config nodemon.json server/index.js",
     "client": "npm --prefix client run dev",
     "dev": "concurrently -k \"npm run server\" \"npm run client\"",
-    "build": "npm --prefix client run build",
+    "build": "npm install --prefix client && npm run build --prefix client",
     "start": "node server/index.js"
   },
   "dependencies": {
