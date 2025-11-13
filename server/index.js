@@ -46,6 +46,7 @@ function normalizeQuestion(q) {
   };
 }
 
+// API Routen
 app.get("/api/speakers", async (_req, res) => {
   const speakers = await readJSON(SPEAKERS_PATH);
   res.json(speakers);
@@ -161,6 +162,7 @@ app.delete("/api/questions/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Socket.io
 io.on("connection", socket => {
   socket.on("join", ({ role, speaker }) => {
     socket.data.role = role;
@@ -172,14 +174,35 @@ io.on("connection", socket => {
   socket.on("disconnect", () => socket.leaveAll());
 });
 
-const clientDist = path.join(__dirname, "..", "client", "dist");
-try {
-  const stat = await fs.stat(clientDist);
-  if (stat.isDirectory()) {
-    app.use(express.static(clientDist));
-    app.get("*", (_req, res) => res.sendFile(path.join(clientDist, "index.html")));
+// Client-Build finden und ausliefern
+const clientCandidates = [
+  path.join(__dirname, "..", "client", "dist"),
+  path.join(process.cwd(), "client", "dist"),
+  path.join(process.cwd(), "dist")
+];
+
+let clientDist = null;
+for (const p of clientCandidates) {
+  try {
+    const stat = await fs.stat(p);
+    if (stat.isDirectory()) {
+      clientDist = p;
+      break;
+    }
+  } catch {
+    // ignorieren
   }
-} catch {}
+}
+
+if (clientDist) {
+  console.log("Serving client from:", clientDist);
+  app.use(express.static(clientDist));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+} else {
+  console.warn("Kein Client-Build gefunden, SPA wird nicht ausgeliefert.");
+}
 
 httpServer.on("error", err => {
   if (err.code === "EADDRINUSE") {
@@ -191,6 +214,5 @@ httpServer.on("error", err => {
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Server läuft auf http://localhost:${PORT}`);
-  });
-  
+  console.log(`✅ Server läuft auf http://localhost:${PORT}`);
+});
