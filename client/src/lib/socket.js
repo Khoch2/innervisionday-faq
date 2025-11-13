@@ -1,7 +1,8 @@
 import { io } from "socket.io-client";
 
-// ⚠️ Passe hier deine IP an – die gleiche, die du im Browser aufrufst
-const URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5500";
+const URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  window.location.origin.replace(/^http/, "ws");
 
 export const socket = io(URL, {
   transports: ["websocket"],
