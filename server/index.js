@@ -10,20 +10,31 @@ import { customAlphabet } from "nanoid";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 5500;
+// Render PORT wird zuverlässig erzwungen
+const PORT = Number(process.env.PORT) || 5500;
+
 const app = express();
 const httpServer = createServer(app);
+
 const io = new Server(httpServer, {
-  cors: { origin: "*", methods: ["GET", "POST", "DELETE"] }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "DELETE"]
+  }
 });
+
+// Unverzüglich PORT melden
+console.log("Starting server on port:", PORT);
 
 app.use(cors());
 app.use(express.json({ limit: "200kb" }));
 
 const SPEAKERS_PATH = path.join(__dirname, "speakers.json");
 const QUESTIONS_PATH = path.join(__dirname, "data", "questions.json");
+
 const nanoid = customAlphabet("abcdefghijkmnopqrstuvwxyz0123456789", 8);
 
+// Helpers
 async function readJSON(p) {
   try {
     const buf = await fs.readFile(p, "utf-8");
@@ -46,7 +57,7 @@ function normalizeQuestion(q) {
   };
 }
 
-// API Routen
+// API
 app.get("/api/speakers", async (_req, res) => {
   const speakers = await readJSON(SPEAKERS_PATH);
   res.json(speakers);
@@ -80,6 +91,7 @@ app.post("/api/questions", async (req, res) => {
     votes: 0,
     createdAt: Date.now()
   };
+
   all.push(q);
   await writeJSON(QUESTIONS_PATH, all);
 
@@ -90,6 +102,7 @@ app.post("/api/questions", async (req, res) => {
   res.json({ ok: true, question: q });
 });
 
+// Approve
 app.post("/api/mod/approve", async (req, res) => {
   const { id, approved } = req.body || {};
   if (!id || typeof approved !== "boolean")
@@ -110,9 +123,10 @@ app.post("/api/mod/approve", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
-// Vote erhöhen
+// Vote
 app.post("/api/questions/:id/vote", async (req, res) => {
   const { id } = req.params;
+
   const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
   const idx = all.findIndex(q => q.id === id);
   if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
@@ -128,9 +142,10 @@ app.post("/api/questions/:id/vote", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
-// Vote reduzieren
+// Unvote
 app.post("/api/questions/:id/unvote", async (req, res) => {
   const { id } = req.params;
+
   const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
   const idx = all.findIndex(q => q.id === id);
   if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
@@ -146,8 +161,10 @@ app.post("/api/questions/:id/unvote", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
+// Delete
 app.delete("/api/questions/:id", async (req, res) => {
   const { id } = req.params;
+
   const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
   const idx = all.findIndex(q => q.id === id);
   if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
@@ -171,48 +188,30 @@ io.on("connection", socket => {
     else if (role === "guest" && speaker) socket.join(`speaker:${speaker}`);
     else if (role === "selected" && speaker) socket.join(`selected:${speaker}`);
   });
+
   socket.on("disconnect", () => socket.leaveAll());
 });
 
-// Client-Build finden und ausliefern
-const clientCandidates = [
-  path.join(__dirname, "..", "client", "dist"),
-  path.join(process.cwd(), "client", "dist"),
-  path.join(process.cwd(), "dist")
-];
+// STATIC FILE SERVING
 
-let clientDist = null;
-for (const p of clientCandidates) {
-  try {
-    const stat = await fs.stat(p);
-    if (stat.isDirectory()) {
-      clientDist = p;
-      break;
-    }
-  } catch {
-    // ignorieren
-  }
-}
+// sichere Pfade
+const clientDist = path.join(process.cwd(), "client", "dist");
 
-if (clientDist) {
+console.log("Looking for client build in:", clientDist);
+
+import fsSync from "fs";
+
+if (fsSync.existsSync(clientDist)) {
   console.log("Serving client from:", clientDist);
   app.use(express.static(clientDist));
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
+  app.get("*", (_req, res) =>
+    res.sendFile(path.join(clientDist, "index.html"))
+  );
 } else {
-  console.warn("Kein Client-Build gefunden, SPA wird nicht ausgeliefert.");
+  console.log("⚠️ client/dist NICHT gefunden!");
 }
 
-httpServer.on("error", err => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`Port ${PORT} belegt. lsof -i :${PORT} && kill -9 <PID>`);
-    process.exit(1);
-  } else {
-    throw err;
-  }
-});
-
+// START SERVER
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Server läuft auf http://localhost:${PORT}`);
+  console.log(`Server läuft öffentlich auf Port ${PORT}`);
 });
