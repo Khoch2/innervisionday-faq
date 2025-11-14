@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
@@ -6,11 +5,17 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { customAlphabet } from "nanoid";
+import mongoose from "mongoose";
+import fsSync from "fs";
 
+import Question from "./models/Question.js";  // MongoDB Modell
+
+// ----------------------------------------------------------------------
+// Backend Grundsetup
+// ----------------------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Render PORT wird zuverlässig erzwungen
 const PORT = Number(process.env.PORT) || 5500;
 
 const app = express();
@@ -23,58 +28,67 @@ const io = new Server(httpServer, {
   }
 });
 
-// Unverzüglich PORT melden
 console.log("Starting server on port:", PORT);
 
 app.use(cors());
 app.use(express.json({ limit: "200kb" }));
 
-const SPEAKERS_PATH = path.join(__dirname, "speakers.json");
-const QUESTIONS_PATH = path.join(__dirname, "data", "questions.json");
+// ----------------------------------------------------------------------
+// MongoDB Verbindung
+// ----------------------------------------------------------------------
+const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_DBNAME = process.env.MONGODB_DBNAME || "innervisionday";
 
+if (!MONGODB_URI) {
+  console.error("❌ FEHLER: MONGODB_URI ist nicht gesetzt!");
+  process.exit(1);
+}
+
+mongoose
+  .connect(MONGODB_URI, {
+    dbName: MONGODB_DBNAME
+  })
+  .then(() => console.log("✔️ MongoDB verbunden"))
+  .catch(err => {
+    console.error("❌ MongoDB Verbindungsfehler:", err);
+    process.exit(1);
+  });
+
+// ----------------------------------------------------------------------
+// Dateien (Speaker-Liste bleibt in JSON)
+// ----------------------------------------------------------------------
+const SPEAKERS_PATH = path.join(__dirname, "speakers.json");
+
+// NanoID für Frage-IDs
 const nanoid = customAlphabet("abcdefghijkmnopqrstuvwxyz0123456789", 8);
 
-// Helpers
-async function readJSON(p) {
-  try {
-    const buf = await fs.readFile(p, "utf-8");
-    return JSON.parse(buf || "[]");
-  } catch {
-    return [];
-  }
-}
-async function writeJSON(p, data) {
-  await fs.writeFile(p, JSON.stringify(data, null, 2), "utf-8");
-}
-function normalizeQuestion(q) {
-  return {
-    id: q.id,
-    speaker: q.speaker,
-    text: q.text,
-    approved: !!q.approved,
-    votes: Number.isFinite(q.votes) ? q.votes : 0,
-    createdAt: q.createdAt || Date.now()
-  };
-}
+// ----------------------------------------------------------------------
+// API ROUTES
+// ----------------------------------------------------------------------
 
-// API
+// SPEAKER LIST
 app.get("/api/speakers", async (_req, res) => {
-  const speakers = await readJSON(SPEAKERS_PATH);
-  res.json(speakers);
+  try {
+    const buf = fsSync.readFileSync(SPEAKERS_PATH, "utf-8");
+    return res.json(JSON.parse(buf || "[]"));
+  } catch {
+    return res.json([]);
+  }
 });
 
+// GET QUESTIONS (nach Speaker gefiltert)
 app.get("/api/questions", async (req, res) => {
   const speaker = req.query.speaker;
   if (!speaker) return res.status(400).json({ error: "speaker benötigt" });
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const list = all
-    .filter(q => q.speaker === speaker)
-    .sort((a, b) => (b.votes || 0) - (a.votes || 0) || b.createdAt - a.createdAt);
+  const questions = await Question.find({ speaker })
+    .sort({ votes: -1, createdAt: -1 })
+    .lean();
 
-  res.json(list);
+  res.json(questions);
 });
 
+// FRAGE ERSTELLEN
 app.post("/api/questions", async (req, res) => {
   const { speaker, text } = req.body || {};
   if (!speaker || !text) return res.status(400).json({ error: "speaker und text benötigt" });
@@ -82,19 +96,16 @@ app.post("/api/questions", async (req, res) => {
   const trimmed = String(text).slice(0, 500).trim();
   if (!trimmed) return res.status(400).json({ error: "Leerer Text" });
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const q = {
+  const q = await Question.create({
     id: `q_${nanoid()}`,
     speaker,
     text: trimmed,
     approved: false,
     votes: 0,
     createdAt: Date.now()
-  };
+  });
 
-  all.push(q);
-  await writeJSON(QUESTIONS_PATH, all);
-
+  // Socket Broadcast
   io.to("mod").emit("question:new", q);
   io.to(`speaker:${speaker}`).emit("question:new", q);
   io.to(`selected:${speaker}`).emit("question:new", q);
@@ -102,20 +113,20 @@ app.post("/api/questions", async (req, res) => {
   res.json({ ok: true, question: q });
 });
 
-// Approve
+// APPROVE
 app.post("/api/mod/approve", async (req, res) => {
-  const { id, approved } = req.body || {};
+  const { id, approved } = req.body;
   if (!id || typeof approved !== "boolean")
     return res.status(400).json({ error: "id und approved benötigt" });
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const idx = all.findIndex(q => q.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
+  const updated = await Question.findOneAndUpdate(
+    { id },
+    { approved },
+    { new: true }
+  ).lean();
 
-  all[idx].approved = approved;
-  await writeJSON(QUESTIONS_PATH, all);
+  if (!updated) return res.status(404).json({ error: "Nicht gefunden" });
 
-  const updated = all[idx];
   io.to("mod").emit("question:update", updated);
   io.to(`speaker:${updated.speaker}`).emit("question:update", updated);
   io.to(`selected:${updated.speaker}`).emit("question:update", updated);
@@ -123,18 +134,18 @@ app.post("/api/mod/approve", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
-// Vote
+// VOTE
 app.post("/api/questions/:id/vote", async (req, res) => {
   const { id } = req.params;
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const idx = all.findIndex(q => q.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
+  const updated = await Question.findOneAndUpdate(
+    { id },
+    { $inc: { votes: 1 } },
+    { new: true }
+  ).lean();
 
-  all[idx].votes = (all[idx].votes || 0) + 1;
-  await writeJSON(QUESTIONS_PATH, all);
+  if (!updated) return res.status(404).json({ error: "Nicht gefunden" });
 
-  const updated = all[idx];
   io.to("mod").emit("question:update", updated);
   io.to(`speaker:${updated.speaker}`).emit("question:update", updated);
   io.to(`selected:${updated.speaker}`).emit("question:update", updated);
@@ -142,18 +153,24 @@ app.post("/api/questions/:id/vote", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
-// Unvote
+// UNVOTE
 app.post("/api/questions/:id/unvote", async (req, res) => {
   const { id } = req.params;
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const idx = all.findIndex(q => q.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
+  const updated = await Question.findOneAndUpdate(
+    { id },
+    { $inc: { votes: -1 } },
+    { new: true }
+  ).lean();
 
-  all[idx].votes = Math.max((all[idx].votes || 0) - 1, 0);
-  await writeJSON(QUESTIONS_PATH, all);
+  if (!updated) return res.status(404).json({ error: "Nicht gefunden" });
 
-  const updated = all[idx];
+  // Votes nicht negativ werden lassen
+  if (updated.votes < 0) {
+    updated.votes = 0;
+    await Question.updateOne({ id }, { votes: 0 });
+  }
+
   io.to("mod").emit("question:update", updated);
   io.to(`speaker:${updated.speaker}`).emit("question:update", updated);
   io.to(`selected:${updated.speaker}`).emit("question:update", updated);
@@ -161,16 +178,12 @@ app.post("/api/questions/:id/unvote", async (req, res) => {
   res.json({ ok: true, question: updated });
 });
 
-// Delete
+// DELETE
 app.delete("/api/questions/:id", async (req, res) => {
   const { id } = req.params;
 
-  const all = (await readJSON(QUESTIONS_PATH)).map(normalizeQuestion);
-  const idx = all.findIndex(q => q.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Nicht gefunden" });
-
-  const [deleted] = all.splice(idx, 1);
-  await writeJSON(QUESTIONS_PATH, all);
+  const deleted = await Question.findOneAndDelete({ id }).lean();
+  if (!deleted) return res.status(404).json({ error: "Nicht gefunden" });
 
   io.to("mod").emit("question:deleted", { id: deleted.id });
   io.to(`speaker:${deleted.speaker}`).emit("question:deleted", { id: deleted.id });
@@ -179,7 +192,9 @@ app.delete("/api/questions/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Socket.io
+// ----------------------------------------------------------------------
+// SOCKET.IO
+// ----------------------------------------------------------------------
 io.on("connection", socket => {
   socket.on("join", ({ role, speaker }) => {
     socket.data.role = role;
@@ -192,14 +207,12 @@ io.on("connection", socket => {
   socket.on("disconnect", () => socket.leaveAll());
 });
 
-// STATIC FILE SERVING
-
-// sichere Pfade
+// ----------------------------------------------------------------------
+// STATIC CLIENT SERVING
+// ----------------------------------------------------------------------
 const clientDist = path.join(process.cwd(), "client", "dist");
 
 console.log("Looking for client build in:", clientDist);
-
-import fsSync from "fs";
 
 if (fsSync.existsSync(clientDist)) {
   console.log("Serving client from:", clientDist);
@@ -211,7 +224,9 @@ if (fsSync.existsSync(clientDist)) {
   console.log("⚠️ client/dist NICHT gefunden!");
 }
 
+// ----------------------------------------------------------------------
 // START SERVER
+// ----------------------------------------------------------------------
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Server läuft öffentlich auf Port ${PORT}`);
 });

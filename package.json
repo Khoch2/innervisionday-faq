@@ -13,6 +13,7 @@
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "mongoose": "^8.19.3",
     "nanoid": "^5.1.6",
     "socket.io": "^4.8.1"
   },
