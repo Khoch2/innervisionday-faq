@@ -224,6 +224,20 @@ if (fsSync.existsSync(clientDist)) {
   console.log("⚠️ client/dist NICHT gefunden!");
 }
 
+// ----------------------------------------------------------
+// KEEP ALIVE: Ping alle 14 Minuten, damit Render nicht schläft
+// ----------------------------------------------------------
+const SELF_URL = process.env.SELF_URL;
+
+if (SELF_URL) {
+  setInterval(() => {
+    fetch(SELF_URL)
+      .then(() => console.log("Keep-Alive-Ping erfolgreich"))
+      .catch(err => console.log("Keep-Alive-Ping Fehler:", err.message));
+  }, 14 * 60 * 1000); // alle 14 Minuten
+}
+
+
 // ----------------------------------------------------------------------
 // START SERVER
 // ----------------------------------------------------------------------
